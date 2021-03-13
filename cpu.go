@@ -3,48 +3,64 @@ package chip8
 import (
 	"fmt"
 	"log"
-	"sync"
-	"sync/atomic"
+
+	"github.com/nfishe/chip8/internal/atomic"
 )
 
-// Memory
-type Memory [4096]uint
+type Register struct {
+	x uint8
+}
+
+func (r *Register) Equal(s Register) bool {
+	return r.x == s.x
+}
+
+func (r *Register) Set(x uint8) {
+	atomic.Store8(&r.x, x)
+}
+
+func (r *Register) Value() uint8 { return r.x }
 
 type CPU struct {
-	memory Memory
+	Display [64][32]uint8
 
-	mu sync.Mutex
-	pc uint64
+	Memory [4096]uint8
+
+	PC, I uint16
+
+	Stack [16]uint16
+	SP    uint8
+
+	// Timers
+	Timers struct {
+		// Delay timer
+		D uint8
+
+		// Sound
+		S uint8
+	}
+
+	V [16]Register
 }
 
 // New initiates creates a new CPU
 func New() *CPU {
-	var m Memory
 	return &CPU{
-		memory: m,
-		pc:     0x200,
+		PC: 0x200,
 	}
 }
 
 func (cpu *CPU) Cycle() error {
-	opcode := (cpu.memory[cpu.pc]<<8 | cpu.memory[cpu.pc+1])
-	err := func() error {
-		cpu.executeOp(opcode)
-		return nil
-	}()
+	opcode := cpu.decodeOp()
 
-	return err
+	log.Println(fmt.Printf("%x", opcode))
+
+	if err := cpu.executeOp(opcode); err != nil {
+		return err
+	}
+	return nil
 }
 
-// executeOp
-func (cpu *CPU) executeOp(opcode uint) {
-	cpu.mu.Lock()
-	defer cpu.mu.Unlock()
-
-	atomic.AddUint64(&cpu.pc, 2)
-
-	x := (opcode & 0x0F00) >> 8
-	y := (opcode & 0x00F0) >> 4
-
-	log.Println(fmt.Printf("%v %v", x, y))
+func (cpu *CPU) decodeOp() uint16 {
+	return (uint16(cpu.Memory[cpu.PC])<<8 | uint16(cpu.Memory[cpu.PC+1]))
 }
